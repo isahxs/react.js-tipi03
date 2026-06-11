@@ -7,7 +7,7 @@ import bodyParser from "body-parser";
 
 const app = express();
 app.use(cors({
-    origin: ['https://localhost:3000'],
+    origin: ['http://localhost:3000'],
     methods: ["POS", "GET"],
     credentials: true
 }));
@@ -71,6 +71,29 @@ app.post("/login", (req, res) =>{
     });
 });
 
+app.get("/", (req, res) => {
+    if (req.session.username) {
+        return res.json({
+            valid: true,
+            name: req.session.username
+        });
+    } else {
+        return res.json({
+            valid: false
+        });
+    }
+});
+
+//rota de logout
+app.get("/logout", (req, res) => {
+    req.session.destroy((err) => {
+        if(err) {
+            return res.status(500).json({ error: "Erro ao encerrar sessão"});
+        }
+        res.clearCookie("connect.sid"); //nome padrão do cookie do express-session
+        return res.json({ message: "Logout realizado com sucesso" });
+    })
+})
 
 app.listen(7006, () => {
     console.log("Conectado ao banco de dados");
