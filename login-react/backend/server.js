@@ -12,7 +12,7 @@ dotenv.config();
 const app = express();
 app.use(cors({
     origin: ['http://localhost:3000'],
-    methods: ["POST", "GET", "PUT"],
+    methods: ["POST", "GET", "PUT", "DELETE"],
     credentials: true
 }));
 
@@ -96,7 +96,6 @@ app.get("/logout", (req, res) => {
     })
 })
 
-
 // READ - GET
 app.get("/cadastrados", (req, res) => {
     const sql = "SELECT id, name, email FROM cadastro";
@@ -133,6 +132,20 @@ app.put("/cadastrados/:id", (req, res) => {
             return res.json({ message: "Usuário atualizado com sucesso" });
         }
     );
+});
+
+//DELETE
+app.delete("/cadastrados/:id", (req, res) => {
+    const sql = "DELETE FROM cadastro WHERE id = ?";
+
+    db.query(sql, [req.params.id], (err, result) => {
+        if (err) {
+            console.log(err);
+            return res.status(500).json({ error: "Erro ao excluir" });
+        }
+
+        return res.json({ message: "Usuário excluído com sucesso" });
+    });
 });
 
 app.listen(process.env.PORT, () => {
