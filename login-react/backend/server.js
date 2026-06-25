@@ -6,9 +6,11 @@ import cookkieParser from "cookie-parser";
 import bodyParser from "body-parser";
 import dotenv from "dotenv";
 import db from "./db.js";
+import bcrypt from "bcrypt";
 
 dotenv.config();
 
+//config cors
 const app = express();
 app.use(cors({
     origin: ['http://localhost:3000'],
@@ -19,6 +21,8 @@ app.use(cors({
 app.use(express.json());
 app.use(cookkieParser());
 app.use(bodyParser.json());
+
+//config session
 app.use(session({
     secret: 'secret', //uma chave secreta usada para criptografar ocookie da sessão
     resave: false,
@@ -29,47 +33,72 @@ app.use(session({
     } // definindo as propriedades do cookie da sessão
 }));
 
+//middleware de autenticação
+const verificarLogin = (req, res, next) => {
+    if (req.session.username) {
+    next();
+    } else {
+      return res.status(401).json({ error: "Usuário não autenticado" });
+    }
+}
 
-// CREATE - com post, pois ao user get os dados são mostrados na url
-app.post("/cadastrar", (req, res) => {
+// CREATE - Cadastro - com post, pois ao user get os dados são mostrados na url
+app.post("/cadastrar", async (req, res) => {
+try {
     const sql = "INSERT INTO cadastro(name, email, password) VALUES(?)";
-    const valores = [
-        req.body.name,
-        req.body.email,
-        req.body.password
-    ];
+    
+    const name = req.body.name.trim(); //
+    const email = req.body.email.toLowerCase().trim(); //email fica com os elementos todos em minúsculo
+    const password = req.body.password.trim(); 
 
-    db.query(sql, [valores], (err, data) => {
+    const hash = await bcrypt.hash(password, 10); //embaralha os elementos da senha e espera a ação acontecer para a criptografia
+
+    db.query(sql, [[name, email, hash]], (err, data) => {
         if(err) {
             console.log(err);
             return res.status(500).json({ error: "Erro ao cadastrar" });
         }
 
-        return res.json(data);
+        return res.json({ message: "Usuário cadastrado com sucesso" });
     });
+} catch {
+    return res.status(500).json({ error: "Erro interno" });
+}
 });
 
-//READ
+
+//Login - via POST
 app.post("/login", (req, res) =>{
-    const sql = "SELECT * FROM cadastro WHERE email = ? AND password = ?";
 
-    db.query(sql, [req.body.email, req.body.password], (err, data) => {
-        if(err) {
-            console.log(err);
-            return res.status(500).json({ error: "Erro ao cadastrar" });
-        }
+    const email = req.body.email.toLowerCase().trim();
+    const password = req.body.password.trim();
 
-        if(data.length > 0){
-            req.session.username = data[0].name;
-            //console.log
-            console.log(req.session.username);
-            return res.json("Login realizado com sucesso");
-        } else {
-            return res.json("Falha no login");
+    const sql = "SELECT * FROM cadastro WHERE email = ?";
+
+    db.query(sql, [email], async (err, data) => {
+        if (err)
+            return res.status(500).json({ error: "Erro no login" });
+        
+        if (data.length === 0) {
+            return res.status(401).json({ error: "Email ou senha inválidos" });
         }
+        
+        const match = await bcrypt.compare(password, data[0].password);
+
+        if (!match) {
+            return res.status(401).json({ error: "Email ou senha inválidos" });
+        }
+        
+        req.session.username = data[0].name;
+
+        return res.json({
+            message: "Login realizado com sucesso",
+            name: data[0].name
+        });
     });
 });
 
+// verifica sessão - via get
 app.get("/", (req, res) => {
     if (req.session.username) {
         return res.json({
@@ -84,7 +113,6 @@ app.get("/", (req, res) => {
 });
 
 
-
 //rota de logout
 app.get("/logout", (req, res) => {
     req.session.destroy((err) => {
@@ -96,8 +124,8 @@ app.get("/logout", (req, res) => {
     })
 })
 
-// READ - GET
-app.get("/cadastrados", (req, res) => {
+// Listar os usuários (protegido) - via get
+app.get("/cadastrados", verificarLogin, (req, res) => {
     const sql = "SELECT id, name, email FROM cadastro";
 
     db.query(sql, (err, data) => {
@@ -107,8 +135,8 @@ app.get("/cadastrados", (req, res) => {
     });
 });
 
-//READ que busca por id
-app.get("/cadastrados/:id", (req, res) => {
+//Buscar por id (protegido) - via get
+app.get("/cadastrados/:id", verificarLogin, (req, res) => {
     const sql = "SELECT id, name, email FROM cadastro WHERE id = ?";
     
     db.query(sql, [req.params.id], (err, data) => {
@@ -118,8 +146,8 @@ app.get("/cadastrados/:id", (req, res) => {
     });
 });
 
-// UPDATE - PUT
-app.put("/cadastrados/:id", (req, res) => {
+// UPDATE - Atualizar (protegido) - via put
+app.put("/cadastrados/:id", verificarLogin, (req, res) => {
     const sql = "UPDATE cadastro SET name = ?, email = ? WHERE id = ?";
 
     db.query(sql, [req.body.name, req.body.email, req.params.id],
@@ -134,8 +162,8 @@ app.put("/cadastrados/:id", (req, res) => {
     );
 });
 
-//DELETE
-app.delete("/cadastrados/:id", (req, res) => {
+//Deletar (protegido) - via delete
+app.delete("/cadastrados/:id", verificarLogin, (req, res) => {
     const sql = "DELETE FROM cadastro WHERE id = ?";
 
     db.query(sql, [req.params.id], (err, result) => {
@@ -147,6 +175,7 @@ app.delete("/cadastrados/:id", (req, res) => {
         return res.json({ message: "Usuário excluído com sucesso" });
     });
 });
+
 
 app.listen(process.env.PORT, () => {
     console.log(`Servidor rodando na porta ${process.env.PORT}`);
